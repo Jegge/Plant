@@ -16,7 +16,7 @@ category:            Text
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
-executable Plant
+executable plant
   main-is:             Main.hs
   -- other-modules:
   -- other-extensions:
