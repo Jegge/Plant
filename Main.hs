@@ -3,14 +3,12 @@
 module Main where
 
 import Control.Applicative ((<|>))
-
-import Data.Attoparsec.Text
-import Data.Maybe
-import Data.List
+import Data.Attoparsec.Text (Parser, parseOnly, sepBy1, option, decimal, char)
+import Data.Char (isSpace)
+import Data.List (groupBy, sortBy)
 import Data.List.Split (splitWhen)
 import Data.Text (pack)
-import Data.Tree
-
+import Data.Tree (Forest, drawForest, unfoldForest)
 import System.Console.CmdArgs(Data, Typeable, cmdArgs, def, typ, help, name, summary, (&=))
 import System.Exit (ExitCode(..), exitWith)
 
@@ -18,70 +16,72 @@ data Index = Range Int Int
            | Indicees [Int]
            deriving (Show, Eq)
 
-keyword :: (Char -> Bool) -> String -> [Index] -> [[String]]
-keyword p ss is = map (fields p ss) $ (map indicees') is
-  where
-    indicees' :: Index -> [Int]    
-    indicees' (Range a b)  = [a..b]
-    indicees' (Indicees a) = a
-
-    fields :: (Char -> Bool) -> String -> [Int] -> [String]
-    fields p ss fs = let l = splitWhen p ss in mapMaybe (\i -> if length l >= i then Just(l !! (i - 1)) else Nothing) fs
-
-keywords :: (Char -> Bool) -> [Index] -> [String] -> [[[String]]]
-keywords p is ss = map (\t -> keyword p t is) ss 
-
-forest :: (Ord a) => [[a]] -> Forest a
-forest = unfoldForest (\(a, b) -> (a, heads $ groups b)) . heads . groups
-  where
-    groups :: (Ord a) => [[a]] -> [[[a]]]
-    groups = groupBy (\a b -> head a == head b) . sortBy (\a b -> head a `compare` head b)
-    
-    heads :: [[[a]]] -> [(a, [[a]])]
-    heads [[]]   = []
-    heads [[[]]] = []
-    heads ll = map (\l -> let l' = head l in (head l', map tail l)) ll
-
 indicees :: Parser [Index]
-indicees = sepBy1 (range' <|> index') ";"
+indicees = sepBy1 (range <|> index) " "
   where
-    range' :: Parser Index
-    range' = do
-      a <- option 0 decimal
+    range :: Parser Index
+    range = do
+      a <- option 1 decimal
       _ <- char '-'
       b <- option (maxBound :: Int) decimal
       pure $ Range a b
 
-    index' :: Parser Index
-    index' = Indicees <$> sepBy1 decimal ","
+    index :: Parser Index
+    index = Indicees <$> sepBy1 decimal ","
+
+keywords :: Char -> [Index] -> String -> [[String]]
+keywords d is s = let ls = splitWhen (== d) s
+                      l = length ls 
+                      in map (map ((!!)ls) . saveIndicees l) is 
+  where
+    saveIndicees :: Int -> Index -> [Int]
+    saveIndicees l (Range a b)  = [a - 1..min (b-1) (l-1)]
+    saveIndicees l (Indicees f) = filter (<l) $ map pred f
 
 
-data Plant = Plant { delimiter :: String
-                   , fields :: String
+makeForest :: (Ord a) => [[a]] -> Forest a
+makeForest = unfoldForest (\(a, b) -> (a, splitHead $ orderGroups b)) . splitHead . orderGroups
+  where
+    orderGroups :: (Ord a) => [[a]] -> [[[a]]]
+    orderGroups = groupBy (\a b -> head a == head b) . sortBy (\a b -> head a `compare` head b) . filter (not . null)
+
+    splitHead :: [[[a]]] -> [(a, [[a]])]
+    splitHead [[]]   = []
+    splitHead [[[]]] = []
+    splitHead ll = map (\l -> let l' = head l in (head l', map tail l)) ll
+
+drawForest' :: Bool -> Forest String -> String
+drawForest' False f = drawForest f
+drawForest' True  f = unlines $ filter (not . all (\l -> isSpace l || l == '|')) $ filter (not . null) $ lines $ drawForest f
+
+data Plant = Plant { delimiter_ :: String
+                   , fields_ :: String
+                   , compact_ :: Bool
                    }
                    deriving (Data, Typeable, Show, Eq)
 
 plant :: Plant
-plant = Plant { delimiter = def &= name "d" &= typ "CHAR" &= help "Set delimiter for input file"  
-              , fields = def &= typ "LIST" &= name "f" &= help "Selects fields for each tree level"
+plant = Plant { delimiter_ = def &= name "d" &= typ "CHAR" &= help "Set delimiter for input file"  
+              , fields_ = def &= typ "LIST" &= name "f" &= help "Selects fields for each tree level"
+              , compact_ = def &= name "c" &= help "Compact drawing"
               }
-              &= help "A command line editor for spoolfiles." 
+              &= help "Creates trees out of lists" 
               &= summary "Plant v0.1.0.0 (c) Sebastian Boettcher"
               
 main :: IO ()
 main = do
-  (Plant d f) <- cmdArgs plant
+  (Plant delimiter fields compact) <- cmdArgs plant
   
-  delimiter <- case length d of
-      0 -> pure $ ' '
-      1 -> pure $ head d
-      _ -> putStrLn ("Invalid delimiter: '" ++ d ++ "'") >> (exitWith $ ExitFailure 1) 
+  d <- case length $ delimiter of
+            0 -> pure $ ' '
+            1 -> pure $ head $ delimiter
+            _ -> putStrLn ("Invalid delimiter: '" ++ delimiter ++ "'") >> (exitWith $ ExitFailure 1) 
           
-  fields <- case parseOnly indicees (pack f) of 
-     Left  e -> putStrLn ("Invalid field definition: " ++ e) >> (exitWith $ ExitFailure 2) 
-     Right r -> pure r
+  f <- case parseOnly indicees (pack $ fields) of 
+            Left  e -> putStrLn ("Invalid field definition: " ++ e) >> (exitWith $ ExitFailure 2) 
+            Right r -> pure r
 
-  interact $ drawForest . map (fmap unwords) . forest . keywords (== delimiter) fields . filter (not . null) . lines
+  interact $ (drawForest' compact) . map (fmap unwords) . makeForest . map (keywords d f) . filter (not . null) . lines
 
 
 
