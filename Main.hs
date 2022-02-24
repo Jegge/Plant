@@ -9,7 +9,7 @@ import Data.List (groupBy, sortBy)
 import Data.List.Split (splitWhen)
 import Data.Text (pack)
 import Data.Tree (Forest, drawForest, unfoldForest)
-import System.Console.CmdArgs(Data, Typeable, cmdArgs, def, typ, help, name, summary, (&=))
+import System.Console.CmdArgs(Data, Typeable, cmdArgs, def, details, typ, help, name, summary, (&=))
 import System.Exit (ExitCode(..), exitWith)
 
 data Index = Range Int Int
@@ -61,11 +61,19 @@ data Plant = Plant { delimiter_ :: String
 
 plant :: Plant
 plant = Plant { delimiter_ = def &= name "d" &= typ "CHAR" &= help "Set delimiter for input file"
-              , fields_ = def &= typ "LIST" &= name "f" &= help "Selects fields for each tree level"
-              , compact_ = def &= name "c" &= help "Compact drawing"
+              , fields_ = def &= typ "LIST" &= name "f" &= help "Select fields for each tree level"
+              , compact_ = def &= name "c" &= help "Compact tree drawing"
               }
-              &= help "Creates trees out of lists"
+              &= help "Creates a tree from a list"
               &= summary "Plant v0.1.0.0 (c) Sebastian Boettcher"
+              &= details [ "Examples for the -f parameter: "
+                         , "  -f '1 2 3' - 3 levels: 1st, 2nd and 3rd column"
+                         , "  -f '1,2 5' - 2 levels: 1st and 2nd column combined, 5th column"
+                         , "  -f '2-3 5' - 2 levels: 2nd and 3rd column combined, 5th column"
+                         , "  -f '-2 5'  - 2 levels: 1st and 2nd column combined, 5th column"
+                         , "  -f '1 3-'  - 2 levels: 1st column, 3rd to the last column combined"
+                         ]
+
               
 main :: IO ()
 main = do
